@@ -5,7 +5,6 @@
   <description>Playground for testing the SMACH executive</description>
 
   <maintainer email="knowrob@tenorth.de">Moritz Tenorth</maintainer>
-
   <license>BSD</license>
 
   <author>Moritz Tenorth</author>
@@ -20,7 +19,9 @@
   <build_depend>actionlib_msgs</build_depend>
   <build_depend>control_msgs</build_depend>
   <build_depend>trajectory_msgs</build_depend>
-
+  <build_depend>json_prolog</build_depend>
+  <build_depend>json_prolog_msgs</build_depend>
+  <build_depend>knowrob_common</build_depend>
 
   <run_depend>rospy</run_depend>
   <run_depend>smach</run_depend>
@@ -29,5 +30,8 @@
   <run_depend>actionlib_msgs</run_depend>
   <run_depend>control_msgs</run_depend>
   <run_depend>trajectory_msgs</run_depend>
+  <run_depend>json_prolog</run_depend>
+  <run_depend>json_prolog_msgs</run_depend>
+  <run_depend>knowrob_common</run_depend>
 
 </package>
