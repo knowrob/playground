@@ -11,6 +11,8 @@ from actionlib_msgs.msg import *
 from control_msgs.msg import *
 from trajectory_msgs.msg import *
 
+import json_prolog.prolog
+
 # moveit
 import copy
 import moveit_commander
@@ -109,13 +111,21 @@ class Foo(smach.State):
         if self.counter < 3:
             self.counter += 1
 
-            target = geometry_msgs.msg.Pose()
-            target.orientation.w = 1.0
-            target.position.x = 0.1 + (0.1 * self.counter)
-            target.position.y = 0.1 + (0.1 * self.counter)
-            target.position.z = 0.5
+            prolog = json_prolog.prolog.Prolog()
+            query = prolog.query("current_object_pose(ur_map:'Box_SmJzJlQY', [_,_,_,X,_,_,_,Y,_,_,_,Z,_,_,_,_])")
+            for solution in query.solutions():
 
-            userdata.next_pose = target
+                target = geometry_msgs.msg.Pose()
+                target.orientation.w = 1.0
+                target.position.x = solution['X']
+                target.position.y = solution['Y']
+                target.position.z = solution['Z']
+
+                userdata.next_pose = target
+              
+            query.finish()
+
+            
             return 'cont'
         else:
             return 'done'
@@ -144,6 +154,12 @@ def main():
                                                   'done':'succeeded'},
                                remapping={'next_pose':'tgt_pose'})
 
+        #smach.StateMachine.add('TRIGGER_GRIPPER',
+                           #ServiceState('service_name',
+                                        #GripperSrv,
+                                        #request_cb = gripper_request_cb),
+                           #transitions={'succeeded':'MOVE_ARM'})
+                               
         # MoveIt goal
         smach.StateMachine.add('MOVE_ARM', MoveIt(),
                                transitions={'done':'ITERATE'},
