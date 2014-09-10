@@ -32,28 +32,11 @@ scene = None
 group = None
 
 
-
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-def joint_traj_goal():
-    g = FollowJointTrajectoryGoal()
-    g.trajectory = JointTrajectory()
-    g.trajectory.joint_names = JOINT_NAMES
-    g.trajectory.points = [
-        JointTrajectoryPoint(positions=Q1, velocities=[0]*6, time_from_start=rospy.Duration(2.0)),
-        JointTrajectoryPoint(positions=Q2, velocities=[0]*6, time_from_start=rospy.Duration(3.0)),
-        JointTrajectoryPoint(positions=Q3, velocities=[0]*6, time_from_start=rospy.Duration(4.0)),
-        JointTrajectoryPoint(positions=Q2, velocities=[0]*6, time_from_start=rospy.Duration(5.0))]
-    return g
-
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-class MoveIt(smach.State):
+class Init(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['done'],
-                                   input_keys=['goal_pose'])
-        self.counter = 0
+        smach.State.__init__(self, outcomes=['done'])
 
         moveit_commander.roscpp_initialize(sys.argv)
 
@@ -82,54 +65,115 @@ class MoveIt(smach.State):
                                             moveit_msgs.msg.DisplayTrajectory)
 
     def execute(self, userdata):
+
+        rospy.loginfo('Executing state Init')
+        self.group.set_named_target("up")
+        self.group.allow_replanning(True)
+        self.group.set_goal_tolerance(0.05)
+        self.group.set_planner_id('RRTConnectkConfigDefault')
+
+        plan1 = self.group.plan()
+        self.group.go(wait=True)
+
+        rospy.sleep(15)
+        #self.group.clear_pose_targets()
+
+        return 'done'
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+class MoveIt(smach.State):
+    def __init__(self):
+        smach.State.__init__(self, outcomes=['done'],
+                                   input_keys=['goal_pose'])
+        
+        moveit_commander.roscpp_initialize(sys.argv)
+
+        ## Instantiate a RobotCommander object.  This object is an interface to
+        ## the robot as a whole.
+        self.robot = moveit_commander.RobotCommander()
+
+        ## Instantiate a PlanningSceneInterface object.  This object is an interface
+        ## to the world surrounding the robot.
+        rospy.loginfo('Instantiate PlanningSceneInterface')
+        self.scene = moveit_commander.PlanningSceneInterface()
+
+        ## Instantiate a MoveGroupCommander object.  This object is an interface
+        ## to one group of joints.  In this case the group is the joints in the left
+        ## arm.  This interface can be used to plan and execute motions on the left
+        ## arm.
+        rospy.loginfo('Instantiate MoveGroupCommander')
+        self.group = moveit_commander.MoveGroupCommander("manipulator")
+
+
+        ## We create this DisplayTrajectory publisher which is used below to publish
+        ## trajectories for RVIZ to visualize.
+        rospy.loginfo('Create display_trajectory_publisher')
+        self.display_trajectory_publisher = rospy.Publisher(
+                                            '/move_group/display_planned_path',
+                                            moveit_msgs.msg.DisplayTrajectory)
+
+        
+    def execute(self, userdata):
       
         rospy.loginfo('Executing state MoveIt')
 
         self.group.set_pose_target(userdata.goal_pose)
+        self.group.allow_replanning(True)
+        self.group.set_goal_tolerance(0.05)
+        self.group.set_planner_id('RRTConnectkConfigDefault')
+
+        
         rospy.loginfo(userdata.goal_pose)
         
         plan1 = self.group.plan()
 
         self.group.go(wait=True)
-        self.group.clear_pose_targets()
 
-        self.counter += 1
+        rospy.sleep(15)
         
+        #self.group.clear_pose_targets()
+
         return 'done'
 
-
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-        
-class Foo(smach.State):
+
+class ReadNextGoal(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['cont','done'],
+        smach.State.__init__(self, outcomes=['cont', 'finished'],
                                    output_keys=['next_pose'])
-        self.counter = 0
-
+        self.counter=0
+        self.poses = None
+                                   
     def execute(self, userdata):
-        rospy.loginfo('Executing state FOO')
-        if self.counter < 3:
-            self.counter += 1
 
+        if self.poses == None:
+          
+            # read poses of all objects of a given type
             prolog = json_prolog.prolog.Prolog()
-            query = prolog.query("current_object_pose(ur_map:'Box_SmJzJlQY', [_,_,_,X,_,_,_,Y,_,_,_,Z,_,_,_,_])")
+            query = prolog.query("owl_individual_of(Obj, knowrob:'Box-Container'), current_object_pose(Obj, [_,_,_,X,_,_,_,Y,_,_,_,Z,_,_,_,_])")
+
+            # store all results in state-internal list
+            self.poses = []
             for solution in query.solutions():
 
-                target = geometry_msgs.msg.Pose()
-                target.orientation.w = 1.0
-                target.position.x = solution['X']
-                target.position.y = solution['Y']
-                target.position.z = solution['Z']
+                p = geometry_msgs.msg.Pose()
+                p.orientation.w = 1.0
+                p.position.x = solution['X']
+                p.position.y = solution['Y']
+                p.position.z = solution['Z']
 
-                userdata.next_pose = target
-              
+                self.poses.append(p)
             query.finish()
-
             
+        print(self.poses)
+
+        # return next pose if available
+        if len(self.poses) > 0 :
+            userdata.next_pose = self.poses.pop(0)
             return 'cont'
         else:
-            return 'done'
-
+            return 'finished'
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -137,40 +181,38 @@ def main():
     rospy.init_node('smach_example_actionlib')
 
 
-    sm0 = smach.StateMachine(outcomes=['succeeded','aborted','preempted'])
-    sm0.userdata.tgt_pose = geometry_msgs.msg.Pose()
+    sm = smach.StateMachine(outcomes=['succeeded','aborted','preempted'])
+    sm.userdata.tgt_pose = geometry_msgs.msg.Pose()
+    
+    with sm:
 
-    # Open the container
-    with sm0:
+        # Initialize robot pose
+        smach.StateMachine.add('INIT', Init(),
+                               transitions={'done':'READ_NEXT_POSE'})
 
-        # simple joint state goal
-        #smach.StateMachine.add('MOVE_ARM',
-                #smach_ros.SimpleActionState('arm_controller/follow_joint_trajectory',FollowJointTrajectoryAction,goal=joint_traj_goal()),
-                #{'succeeded':'ITERATE'})
-
-        # Iterator state
-        smach.StateMachine.add('ITERATE', Foo(), 
+        # Read next pose from KB
+        smach.StateMachine.add('READ_NEXT_POSE', ReadNextGoal(),
                                transitions={'cont':'MOVE_ARM',
-                                                  'done':'succeeded'},
+                                            'finished':'succeeded'},
                                remapping={'next_pose':'tgt_pose'})
 
-        #smach.StateMachine.add('TRIGGER_GRIPPER',
-                           #ServiceState('service_name',
-                                        #GripperSrv,
-                                        #request_cb = gripper_request_cb),
-                           #transitions={'succeeded':'MOVE_ARM'})
-                               
-        # MoveIt goal
+        # Move to pose
         smach.StateMachine.add('MOVE_ARM', MoveIt(),
-                               transitions={'done':'ITERATE'},
+                               transitions={'done':'READ_NEXT_POSE'},
                                remapping={'goal_pose':'tgt_pose'})
-                
+
+    # start visualizer and introspection server
+    sis = smach_ros.IntrospectionServer('smach_tests', sm, '/SM_ROOT')
+    sis.start()
 
     # Execute SMACH plan
-    outcome = sm0.execute()
-
+    outcome = sm.execute()
+    
+    rospy.spin()
+    sis.stop()
     moveit_commander.roscpp_shutdown()
     rospy.signal_shutdown('All done.')
+    
 
 if __name__ == '__main__':
     main()
