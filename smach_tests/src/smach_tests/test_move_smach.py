@@ -166,7 +166,7 @@ class ReadNextGoal(smach.State):
                 self.poses.append(p)
             query.finish()
             
-        print(self.poses)
+        #print(self.poses)
 
         # return next pose if available
         if len(self.poses) > 0 :
